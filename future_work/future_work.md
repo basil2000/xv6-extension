@@ -35,6 +35,33 @@ This document designs five extensions to the xv6-riscv kernel in
 | Timer interrupts preempt both user and kernel code (`yield()` on timer) | trap.c:86, 158 |
 | One virtio device: disk at `0x10001000`, IRQ 1, pinned with `bus=virtio-mmio-bus.0` | memlayout.h:25-26, Makefile:180 |
 
+### Relation to the xv6 book (rev5, September 2, 2025)
+
+The book in `book/book-riscv-rev5.pdf` describes this code base closely, so it
+is the right background reading. Every function it cites with a listing line
+number exists in this tree. Relevant chapters:
+
+| Feature | Book background |
+|---|---|
+| Section 1 | Ch. 2 (boot: `start()`, `mret`, `main()`), Ch. 6.4 (timer interrupts via `stimecmp`) |
+| Section 2 | Ch. 8 (scheduling, `swtch`, `mycpu`/`myproc`), Ch. 9.5 (process locking), Ch. 7 (locks, memory ordering) |
+| Section 3 | Ch. 5 (page faults: lazy allocation with `SBRK_LAZY` and `vmfault`). §5.3 describes COW fork as something xv6 does *not* do, including the "only one page table refers to it, so don't copy" optimization (D5 here). "Implement COW fork" is Exercise 2 of Ch. 5 |
+| Section 4 | Ch. 3.4-3.5 (physical memory allocator: `kalloc`/`kfree`, `freerange`), Ch. 7.6 (instruction and memory ordering) |
+| Section 5 | Ch. 6 (interrupts, PLIC, device drivers); the disk driver is the model |
+
+**Where this tree differs from the book.** This design follows the code, not
+the book:
+
+- **Sleep API.** The book (§9.2) describes `sleep(void *chan, struct spinlock
+  *lk)`, which releases a condition lock. This tree uses `sleep_prepare(chan)`
+  followed by `sleep()` (proc.c:548-575): the caller registers the channel,
+  drops its own lock, then sleeps, and a wakeup in between makes `sleep()`
+  return at once. Sections 2 and 5 use this API.
+- **Shrinking memory.** The book (§5.2) says `sys_sbrk` calls `shrinkproc`.
+  There is no `shrinkproc` here: `sys_sbrk` calls `growproc(n)` with a
+  negative `n`, which calls `uvmdealloc` (proc.c:236-254, sysproc.c:50-53).
+  Section 3's reference-count audit follows this path.
+
 ### Features and the claim each must support
 
 | # | Feature | Resume claim it backs |
